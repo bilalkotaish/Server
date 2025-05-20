@@ -11,6 +11,7 @@ import CategoryRouter from "./route/category.route.js";
 import ProductRouter from "./route/product.route.js";
 import cartRouter from "./route/cart.route.js";
 import myListRouter from "./route/myList.route.js";
+import AddressRouter from "./route/address.route.js";
 
 const app = express();
 
@@ -30,6 +31,7 @@ app.use("/api/category", CategoryRouter);
 app.use("/api/product", ProductRouter);
 app.use("/api/cart", cartRouter);
 app.use("/api/mylist", myListRouter);
+app.use("/api/address", AddressRouter);
 
 app.get("/", (request, response) => {
   response.json({

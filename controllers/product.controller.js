@@ -1,46 +1,50 @@
 import { v2 as cloudinary } from "cloudinary";
 import { error } from "console";
-import fs from "fs";
-import ProductModel from "../models/product.modal.js";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-  secure: true,
+import ProductModel from "../models/product.modal.js";
+import fs from "fs";
+import ImageKit from "imagekit";
+// cloudinary.config({
+//   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+//   api_key: process.env.CLOUDINARY_API_KEY,
+//   api_secret: process.env.CLOUDINARY_API_SECRET,
+//   secure: true,
+// });
+const imagekit = new ImageKit({
+  publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
+  urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
 });
+
 var ImageArr = [];
 
 export async function uploadProductImage(request, response) {
   try {
-    ImageArr = [];
     const imageFiles = request.files;
+    const uploadResults = [];
 
-    const options = {
-      use_filename: true,
-      unique_filename: false,
-      overwrite: false,
-    };
+    for (let i = 0; i < imageFiles.length; i++) {
+      const result = await imagekit.upload({
+        file: fs.readFileSync(imageFiles[i].path), // Buffer or base64 string
+        fileName: imageFiles[i].originalname,
+        useUniqueFileName: true,
+        folder: "uploads", // optional
+      });
 
-    for (let i = 0; i < imageFiles?.length; i++) {
-      const result = await cloudinary.uploader.upload(
-        imageFiles[i].path,
-        options
-      );
+      uploadResults.push({
+        url: result.url,
+        fileId: result.fileId, // <-- capture this
+      });
 
-      ImageArr.push(result.secure_url);
-
-      // Delete file from local uploads folder
-      fs.unlinkSync(imageFiles[i].path);
+      fs.unlinkSync(imageFiles[i].path); // cleanup
     }
+
     return response.status(200).json({
-      message: "Image Uploaded successfully",
-      images: ImageArr,
+      message: "Images uploaded successfully",
+      images: uploadResults, // array of objects with url + fileId
     });
   } catch (error) {
-    return response.status(500).json({
-      message: error.message || error,
-    });
+    return response.status(500).json({ message: error.message || error });
   }
 }
 
@@ -50,10 +54,11 @@ export async function createProduct(request, response) {
       name: request.body.name,
       description: request.body.description,
       price: request.body.price,
-      images: ImageArr,
+      images: request.body.images,
       brand: request.body.brand,
       oldprice: request.body.oldprice,
       rating: request.body.rating,
+      category: request.body.category,
       catname: request.body.catname,
       catId: request.body.catId,
       subcatname: request.body.subcatname,
@@ -75,7 +80,7 @@ export async function createProduct(request, response) {
         success: false,
       });
     }
-    ImageArr = [];
+
     response.status(200).json({
       message: "Product Created Successfully",
       error: false,
@@ -610,18 +615,13 @@ export async function deleteProduct(request, response) {
         success: false,
       });
     }
-    const images = product.images;
-    for (const img of images) {
-      const imgurl = img;
-      const urlArr = imgurl.split("/");
-      const image = urlArr[urlArr.length - 1];
-      const imageName = image.split(".")[0];
 
-      if (imageName) {
-        const result = await cloudinary.uploader.destroy(
-          imageName,
-          (error, result) => {}
-        );
+    const images = product.images;
+
+    for (const img of images) {
+      const fileId = img.fileId; // Make sure fileId is saved in DB
+      if (fileId) {
+        await imagekit.deleteFile(fileId);
       }
     }
 
@@ -635,9 +635,47 @@ export async function deleteProduct(request, response) {
         success: false,
       });
     }
+
     return response.status(200).json({
       error: false,
       message: "Product Deleted Successfully",
+      success: true,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
+}
+export async function deleteMultipleProduct(request, response) {
+  try {
+    const ids = request.body.ids;
+
+    if (!Array.isArray(ids) || ids.length === 0) {
+      return response.status(400).json({
+        error: true,
+        message: "No valid Product IDs provided",
+        success: false,
+      });
+    }
+
+    const result = await ProductModel.deleteMany({
+      _id: { $in: ids },
+    });
+
+    if (result.deletedCount === 0) {
+      return response.status(404).json({
+        error: true,
+        message: "No products were deleted. Check IDs.",
+        success: false,
+      });
+    }
+
+    return response.status(200).json({
+      error: false,
+      message: `${result.deletedCount} products deleted successfully`,
       success: true,
     });
   } catch (error) {
@@ -676,23 +714,23 @@ export async function getProduct(request, response) {
 }
 export async function deleteProductimage(request, response) {
   try {
-    const imgUrl = request.query.img;
-    const urlArr = imgUrl.split("/");
-    const image = urlArr[urlArr.length - 1];
-    const imgName = image.split(".")[0];
+    const fileId = request.query.fileId;
 
-    if (imgName) {
-      const result = await cloudinary.uploader.destroy(
-        imgName,
-        (error, result) => {}
-      );
-
-      if (result) {
-        return response.status(200).send(result);
-      }
+    if (!fileId) {
+      return response.status(400).json({ message: "fileId is required" });
     }
+
+    const result = await imagekit.deleteFile(fileId);
+
+    return response.status(200).json({
+      message: "Image deleted successfully",
+      result,
+    });
   } catch (error) {
-    return response.status(500).json({ message: error.message || error });
+    console.error("ImageKit delete error:", error);
+    return response.status(500).json({
+      message: error.message || "Failed to delete image",
+    });
   }
 }
 
@@ -704,7 +742,7 @@ export async function UpdateProduct(request, response) {
         name: request.body.name,
         description: request.body.description,
         price: request.body.price,
-        images: ImageArr,
+        images: request.body.images,
         brand: request.body.brand,
         oldprice: request.body.oldprice,
         rating: request.body.rating,
@@ -732,7 +770,7 @@ export async function UpdateProduct(request, response) {
         success: false,
       });
     }
-    ImageArr = [];
+    const images = product.images;
     return response.status(200).json({
       error: false,
       message: "Product Updated Successfully",

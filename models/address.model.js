@@ -16,21 +16,27 @@ const addressSchema = new mongoose.Schema(
     },
     Pincode: {
       type: String,
+      default: "",
     },
     Country: {
       type: String,
+      default: "",
     },
     Mobile: {
-      type: Number,
+      type: String,
       default: null,
     },
     Status: {
       type: Boolean,
       default: true,
     },
+    Selected: {
+      type: Boolean,
+      default: false,
+    },
     UserId: {
       type: mongoose.Schema.ObjectId,
-      default: "",
+      ref: "user",
     },
   },
   {

@@ -5,12 +5,10 @@ const CategorySchema = new mongoose.Schema(
     name: { type: String, default: "", trim: true },
     images: [
       {
-        type: String,
+        url: { type: String, required: true },
+        fileId: { type: String, required: true },
       },
     ],
-    color: {
-      type: String,
-    },
     parentCatname: {
       type: String,
     },

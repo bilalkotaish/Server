@@ -15,7 +15,6 @@ const userSchema = mongoose.Schema(
     password: {
       type: String,
       required: [true, "Provide Password"],
-      minlength: 6,
     },
     Avatar: {
       type: String,
@@ -54,7 +53,7 @@ const userSchema = mongoose.Schema(
     ],
     Shopping_cart: [
       {
-        type: mongoose.Schema.Types.ObjectId,
+        type: mongoose.Schema.ObjectId,
         ref: "cart",
       },
     ],

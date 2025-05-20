@@ -14,6 +14,10 @@ const productSchema = new mongoose.Schema(
       type: String,
       required: true,
     },
+    checked: {
+      type: Boolean,
+      default: false,
+    },
     images: {
       type: Array,
       required: true,
@@ -28,7 +32,7 @@ const productSchema = new mongoose.Schema(
     },
     category: {
       type: mongoose.Schema.Types.ObjectId,
-      ref: "Category",
+      ref: "category",
       //   required: true,
     },
     rating: {
@@ -69,6 +73,10 @@ const productSchema = new mongoose.Schema(
       default: false,
     },
     discount: {
+      type: Number,
+      default: 0,
+    },
+    sale: {
       type: Number,
       default: 0,
     },

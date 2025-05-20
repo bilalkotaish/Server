@@ -8,12 +8,21 @@ import generateRefreshToken from "../utils/refreshToken.js";
 import { v2 as cloudinary } from "cloudinary";
 import fs from "fs";
 import { error } from "console";
+import ImageKit from "imagekit";
+
+import path from "path";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
   api_key: process.env.CLOUDINARY_API_KEY,
   api_secret: process.env.CLOUDINARY_API_SECRET,
   secure: true,
+});
+
+const imagekit = new ImageKit({
+  publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
+  urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
 });
 
 export async function registerUserController(request, response) {
@@ -227,55 +236,103 @@ export async function LogoutController(request, response) {
   }
 }
 
-export async function UploadImageController(request, response) {
+// export async function UploadImageController(request, response) {
+//   try {
+//     const ImageArr = [];
+//     const imageFiles = request.files;
+//     const userId = request.userId;
+//     const user = await UserModel.findOne({ _id: userId });
+//     if (!user) {
+//       return response
+//         .status(404)
+//         .json({ message: "User Not Found", error: true, success: false });
+//     }
+
+//     const imgUrl = user.Avatar;
+//     const urlArr = imgUrl.split("/");
+//     const image = urlArr[urlArr.length - 1];
+//     const imgName = image.split(".")[0];
+
+//     if (imgName) {
+//       const result = await cloudinary.uploader.destroy(
+//         imgName,
+//         (error, result) => {}
+//       );
+//     }
+
+//     const options = {
+//       use_filename: true,
+//       unique_filename: false,
+//       overwrite: false,
+//     };
+
+//     for (let i = 0; i < imageFiles?.length; i++) {
+//       const result = await cloudinary.uploader.upload(
+//         imageFiles[i].path,
+//         options
+//       );
+
+//       ImageArr.push(result.secure_url);
+
+//       // Delete file from local uploads folder
+//       fs.unlinkSync(imageFiles[i].path);
+//     }
+//     user.Avatar = ImageArr[0];
+//     await user.save();
+//     return response.status(200).json({
+//       _id: userId,
+//       Avatar: ImageArr[0], // Return the first image as avatar
+//     });
+//   } catch (error) {
+//     return response.status(500).json({
+//       message: error.message || error,
+//     });
+//   }
+// }
+export async function UploadImageController(req, res) {
   try {
-    const ImageArr = [];
-    const imageFiles = request.files;
-    const userId = request.userId;
+    const imageFiles = req.files;
+    const userId = req.userId;
     const user = await UserModel.findOne({ _id: userId });
+
     if (!user) {
-      return response
+      return res
         .status(404)
         .json({ message: "User Not Found", error: true, success: false });
     }
 
-    const imgUrl = user.Avatar;
-    const urlArr = imgUrl.split("/");
-    const image = urlArr[urlArr.length - 1];
-    const imgName = image.split(".")[0];
+    // Optional: delete previous avatar (only if stored by fileId and you kept it)
+    // if (user.avatarFileId) {
+    //   await imagekit.deleteFile(user.avatarFileId);
+    // }
 
-    if (imgName) {
-      const result = await cloudinary.uploader.destroy(
-        imgName,
-        (error, result) => {}
-      );
+    const uploadResponses = [];
+
+    for (let i = 0; i < imageFiles.length; i++) {
+      const filePath = imageFiles[i].path;
+      const fileName = path.basename(filePath);
+
+      const result = await imagekit.upload({
+        file: fs.readFileSync(filePath),
+        fileName,
+        folder: "user_avatars", // Optional: organize uploads
+      });
+
+      uploadResponses.push(result.url);
+
+      fs.unlinkSync(filePath); // remove file from local uploads
     }
 
-    const options = {
-      use_filename: true,
-      unique_filename: false,
-      overwrite: false,
-    };
-
-    for (let i = 0; i < imageFiles?.length; i++) {
-      const result = await cloudinary.uploader.upload(
-        imageFiles[i].path,
-        options
-      );
-
-      ImageArr.push(result.secure_url);
-
-      // Delete file from local uploads folder
-      fs.unlinkSync(imageFiles[i].path);
-    }
-    user.Avatar = ImageArr[0];
+    // Save the first image URL to user Avatar
+    user.Avatar = uploadResponses[0];
     await user.save();
-    return response.status(200).json({
+
+    return res.status(200).json({
       _id: userId,
-      Avatar: ImageArr[0], // Return the first image as avatar
+      Avatar: uploadResponses[0],
     });
   } catch (error) {
-    return response.status(500).json({
+    return res.status(500).json({
       message: error.message || error,
     });
   }
@@ -353,7 +410,13 @@ export async function updateUserDetails(request, response) {
     return response.status(200).json({
       success: true,
       message: "User details updated successfully",
-      user: updatedUser,
+      user: {
+        name: updatedUser?.name,
+        _id: updatedUser?._id,
+        email: updatedUser?.email,
+        Mobile: updatedUser?.Mobile,
+        Avatar: updatedUser?.Avatar,
+      },
     });
   } catch (error) {
     return response.status(500).json({
@@ -444,34 +507,54 @@ export async function VerifyForgetPassword(request, response) {
 
 export async function resetPassword(request, response) {
   try {
-    const { email, password, confirmPassword } = request.body;
+    const { email, oldPassword, password, confirmPassword } = request.body;
 
-    const user = await UserModel.findOne({ email });
     if (!email || !password || !confirmPassword) {
       return response.status(400).json({
         success: false,
         message: "Email, password and confirm password are required",
       });
     }
-    if (password !== confirmPassword) {
-      return response.status(400).json({
-        success: false,
-        message: "Password and confirm password do not match",
-      });
-    }
+
+    const user = await UserModel.findOne({ email });
     if (!user) {
       return response.status(404).json({
         success: false,
         message: "User not found",
       });
     }
+
+    // If oldPassword is provided, validate it
+    if (oldPassword) {
+      const isPasswordValid = await bcryptjs.compare(
+        oldPassword,
+        user.password
+      );
+      if (!isPasswordValid) {
+        return response.status(400).json({
+          success: false,
+          error: true,
+          message: "Your Old Password is incorrect",
+        });
+      }
+    }
+
+    if (password !== confirmPassword) {
+      return response.status(400).json({
+        success: false,
+        message: "Password and confirm password do not match",
+      });
+    }
+
     const salt = await bcryptjs.genSalt(10);
     const hashedPassword = await bcryptjs.hash(password, salt);
+
     user.password = hashedPassword;
     await user.save();
 
     return response.status(200).json({
       success: true,
+      error: false,
       message: "Password reset successfully",
     });
   } catch (error) {
@@ -529,9 +612,9 @@ export async function refreshToken(request, response) {
 export async function UserDetails(request, response) {
   try {
     const userId = request.userId;
-    const user = await UserModel.findById(userId).select(
-      "-password -refresh_token"
-    );
+    const user = await UserModel.findById(userId)
+      .populate("Address_details")
+      .select("-password -refresh_token");
     return response.status(200).json({
       success: true,
       message: "User details successfully",

@@ -2,62 +2,64 @@ import CategoryModel from "../models/category.model.js";
 import { v2 as cloudinary } from "cloudinary";
 import { error } from "console";
 import fs from "fs";
+import ImageKit from "imagekit";
 
-cloudinary.config({
-  cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
-  api_key: process.env.CLOUDINARY_API_KEY,
-  api_secret: process.env.CLOUDINARY_API_SECRET,
-  secure: true,
+// cloudinary.config({
+//   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
+//   api_key: process.env.CLOUDINARY_API_KEY,
+//   api_secret: process.env.CLOUDINARY_API_SECRET,
+//   secure: true,
+// });
+const imagekit = new ImageKit({
+  publicKey: process.env.IMAGEKIT_PUBLIC_KEY,
+  privateKey: process.env.IMAGEKIT_PRIVATE_KEY,
+  urlEndpoint: process.env.IMAGEKIT_URL_ENDPOINT,
 });
+
 var ImageArr = [];
 export async function uploadImage(request, response) {
   try {
-    ImageArr = [];
     const imageFiles = request.files;
+    const uploadResults = [];
 
-    const options = {
-      use_filename: true,
-      unique_filename: false,
-      overwrite: false,
-    };
+    for (let i = 0; i < imageFiles.length; i++) {
+      const result = await imagekit.upload({
+        file: fs.readFileSync(imageFiles[i].path), // Buffer or base64 string
+        fileName: imageFiles[i].originalname,
+        useUniqueFileName: true,
+        folder: "uploads", // optional
+      });
 
-    for (let i = 0; i < imageFiles?.length; i++) {
-      const result = await cloudinary.uploader.upload(
-        imageFiles[i].path,
-        options
-      );
+      uploadResults.push({
+        url: result.url,
+        fileId: result.fileId, // <-- capture this
+      });
 
-      ImageArr.push(result.secure_url);
-
-      // Delete file from local uploads folder
-      fs.unlinkSync(imageFiles[i].path);
+      fs.unlinkSync(imageFiles[i].path); // cleanup
     }
+
     return response.status(200).json({
-      message: "Image Uploaded successfully",
-      images: ImageArr,
+      message: "Images uploaded successfully",
+      images: uploadResults, // array of objects with url + fileId
     });
   } catch (error) {
-    return response.status(500).json({
-      message: error.message || error,
-    });
+    return response.status(500).json({ message: error.message || error });
   }
 }
 export async function CreateCategory(request, response) {
   try {
     let category = new CategoryModel({
       name: request.body.name,
-      images: ImageArr,
+      images: request.body.images,
       color: request.body.color,
       parentCatId: request.body.parentCatId,
       parentCatname: request.body.parentCatname,
     });
-    if (!category) {
-      return response.status(400).json({ message: "Category not created" });
-    }
+
     category = await category.save();
-    ImageArr = [];
 
     return response.status(200).json({
+      message: "Category created successfully",
       category: category,
     });
   } catch (error) {
@@ -147,65 +149,53 @@ export async function getcategoryById(request, response) {
 
 export async function deleteimage(request, response) {
   try {
-    const imgUrl = request.query.img;
-    const urlArr = imgUrl.split("/");
-    const image = urlArr[urlArr.length - 1];
-    const imgName = image.split(".")[0];
+    const fileId = request.query.fileId;
 
-    if (imgName) {
-      const result = await cloudinary.uploader.destroy(
-        imgName,
-        (error, result) => {}
-      );
-
-      if (result) {
-        return response.status(200).send(result);
-      }
+    if (!fileId) {
+      return response.status(400).json({ message: "fileId is required" });
     }
+
+    const result = await imagekit.deleteFile(fileId);
+
+    return response.status(200).json({
+      message: "Image deleted successfully",
+      result,
+    });
   } catch (error) {
-    return response.status(500).json({ message: error.message || error });
+    console.error("ImageKit delete error:", error);
+    return response.status(500).json({
+      message: error.message || "Failed to delete image",
+    });
   }
 }
-
 export async function deletecategory(request, response) {
   try {
     const id = request.params.id;
     const category = await CategoryModel.findById(id);
-    const images = category.images;
-    for (const img of images) {
-      const imgurl = img;
-      const urlArr = imgurl.split("/");
-      const image = urlArr[urlArr.length - 1];
-      const imageName = image.split(".")[0];
 
-      if (imageName) {
-        const result = await cloudinary.uploader.destroy(
-          imageName,
-          (error, result) => {}
-        );
-      }
-    }
-    const SubCat = await CategoryModel.find({
-      parentCatId: id,
-    });
-    for (let i = 0; i < SubCat.length; i++) {
-      const thirdsub = await CategoryModel.find({
-        parentCatId: SubCat[i]._id,
-      });
-      for (let i = 0; i < thirdsub.length; i++) {
-        const deletethird = await CategoryModel.findByIdAndDelete(
-          thirdsub[i]._id
-        );
-      }
-      const deletesubCat = await CategoryModel.findByIdAndDelete(SubCat[i]._id);
-    }
-    const deletecat = await CategoryModel.findByIdAndDelete(id);
     if (!category) {
       return response.status(404).json({ message: "Category not found" });
     }
-    if (!deletecat) {
-      return response.status(404).json({ message: "Category not found" });
+
+    // Delete images from ImageKit
+    for (const img of category.images) {
+      if (img.fileId) {
+        await imagekit.deleteFile(img.fileId);
+      }
     }
+
+    // Handle subcategories
+    const SubCat = await CategoryModel.find({ parentCatId: id });
+    for (let sub of SubCat) {
+      const thirdLevelSub = await CategoryModel.find({ parentCatId: sub._id });
+      for (let third of thirdLevelSub) {
+        await CategoryModel.findByIdAndDelete(third._id);
+      }
+      await CategoryModel.findByIdAndDelete(sub._id);
+    }
+
+    // Delete the main category
+    await CategoryModel.findByIdAndDelete(id);
 
     return response
       .status(200)
