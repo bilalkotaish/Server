@@ -3,9 +3,15 @@ import auth from "../middleware/auth.js";
 import upload from "../middleware/multer.js";
 import {
   createProduct,
+  createProductRam,
+  createProductSize,
+  createProductWeight,
   deleteMultipleProduct,
   deleteProduct,
   deleteProductimage,
+  deleteProductram,
+  deleteProductsize,
+  deleteProductweight,
   getAllProducts,
   getFeaturedProduct,
   getProduct,
@@ -17,8 +23,17 @@ import {
   getProductByThirdSubCategory,
   getProductByThirdSubCatName,
   getProductCount,
+  getProductRam,
+  getProductramById,
   getProductsByPrice,
+  getProductSize,
+  getProductSizeById,
+  getProductWeight,
+  getProductweightById,
   UpdateProduct,
+  UpdateProductRam,
+  UpdateProductSize,
+  UpdateProductWeight,
   uploadProductImage,
 } from "../controllers/product.controller.js";
 
@@ -32,7 +47,21 @@ ProductRouter.post(
 );
 
 ProductRouter.post("/create", auth, createProduct);
+ProductRouter.post("/AddRam", auth, createProductRam);
+ProductRouter.post("/addSize", auth, createProductSize);
+ProductRouter.post("/AddWeight", auth, createProductWeight);
+
 ProductRouter.get("/products", getAllProducts);
+ProductRouter.get("/getRams", getProductRam);
+ProductRouter.get("/getSizes", getProductSize);
+ProductRouter.get("/getWeights", getProductWeight);
+ProductRouter.get("/getRams/:id", getProductramById);
+ProductRouter.get("/getSizes/:id", getProductSizeById);
+ProductRouter.get("/getWeights/:id", getProductweightById);
+ProductRouter.delete("/deleteSize/:id", deleteProductsize);
+ProductRouter.delete("/deleteWeight/:id", deleteProductweight);
+ProductRouter.delete("/deleteRam/:id", deleteProductram);
+
 ProductRouter.get("/products/:id", getProductByCategory);
 ProductRouter.get("/productsbyCatname", getProductByCatName);
 ProductRouter.get("/productSub/:id", getProductBySubCategory);
@@ -48,5 +77,8 @@ ProductRouter.get("/:id", getProduct);
 ProductRouter.delete("/deleteimage", auth, deleteProductimage);
 ProductRouter.delete("/deleteMultiple", deleteMultipleProduct);
 ProductRouter.put("/updateProduct/:id", auth, UpdateProduct);
+ProductRouter.put("/updateRams/:id", auth, UpdateProductRam);
+ProductRouter.put("/updatesize/:id", auth, UpdateProductSize);
+ProductRouter.put("/updateWeight/:id", auth, UpdateProductWeight);
 
 export default ProductRouter;
