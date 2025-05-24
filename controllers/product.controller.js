@@ -661,21 +661,42 @@ export async function deleteMultipleProduct(request, response) {
       });
     }
 
-    const result = await ProductModel.deleteMany({
-      _id: { $in: ids },
-    });
+    // Validate each ID
+    const validIds = ids.filter((id) => mongoose.Types.ObjectId.isValid(id));
 
-    if (result.deletedCount === 0) {
-      return response.status(404).json({
+    if (validIds.length === 0) {
+      return response.status(400).json({
         error: true,
-        message: "No products were deleted. Check IDs.",
+        message: "No valid ObjectIds provided",
         success: false,
       });
     }
 
+    const products = await ProductModel.find({ _id: { $in: validIds } });
+
+    if (!products || products.length === 0) {
+      return response.status(404).json({
+        error: true,
+        message: "Products Not Found",
+        success: false,
+      });
+    }
+
+    for (const product of products) {
+      const images = product.images || [];
+      for (const img of images) {
+        const fileId = img.fileId;
+        if (fileId) {
+          await imagekit.deleteFile(fileId);
+        }
+      }
+    }
+
+    await ProductModel.deleteMany({ _id: { $in: validIds } });
+
     return response.status(200).json({
       error: false,
-      message: `${result.deletedCount} products deleted successfully`,
+      message: "Products Deleted Successfully",
       success: true,
     });
   } catch (error) {

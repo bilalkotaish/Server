@@ -37,7 +37,6 @@ ProductRouter.get("/products/:id", getProductByCategory);
 ProductRouter.get("/productsbyCatname", getProductByCatName);
 ProductRouter.get("/productSub/:id", getProductBySubCategory);
 ProductRouter.get("/productsbySubCatname", getProductBySubCatName);
-ProductRouter.delete("/deleteMultiple", deleteMultipleProduct);
 ProductRouter.get("/productthirdSub/:id", getProductByThirdSubCategory);
 ProductRouter.get("/productsbythirdSubCatname", getProductByThirdSubCatName);
 ProductRouter.get("/productsByPrice", getProductsByPrice);
@@ -47,7 +46,7 @@ ProductRouter.get("/isFeatured", getFeaturedProduct);
 ProductRouter.delete("/:id", deleteProduct);
 ProductRouter.get("/:id", getProduct);
 ProductRouter.delete("/deleteimage", auth, deleteProductimage);
-
+ProductRouter.delete("/deleteMultiple", deleteMultipleProduct);
 ProductRouter.put("/updateProduct/:id", auth, UpdateProduct);
 
 export default ProductRouter;
