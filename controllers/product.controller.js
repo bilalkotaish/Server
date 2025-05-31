@@ -50,6 +50,35 @@ export async function uploadProductImage(request, response) {
     return response.status(500).json({ message: error.message || error });
   }
 }
+export async function uploadBannerImage(request, response) {
+  try {
+    const imageFiles = request.files;
+    const uploadResults = [];
+
+    for (let i = 0; i < imageFiles.length; i++) {
+      const result = await imagekit.upload({
+        file: fs.readFileSync(imageFiles[i].path), // Buffer or base64 string
+        fileName: imageFiles[i].originalname,
+        useUniqueFileName: true,
+        folder: "productBanner", // optional
+      });
+
+      uploadResults.push({
+        url: result.url,
+        fileId: result.fileId, // <-- capture this
+      });
+
+      fs.unlinkSync(imageFiles[i].path); // cleanup
+    }
+
+    return response.status(200).json({
+      message: "Images uploaded successfully",
+      images: uploadResults, // array of objects with url + fileId
+    });
+  } catch (error) {
+    return response.status(500).json({ message: error.message || error });
+  }
+}
 
 export async function createProduct(request, response) {
   try {
@@ -58,6 +87,9 @@ export async function createProduct(request, response) {
       description: request.body.description,
       price: request.body.price,
       images: request.body.images,
+      bannerImages: request.body.bannerImages,
+      bannerTitle: request.body.bannerTitle,
+      IsDisplayedHome: request.body.IsDisplayedHome,
       brand: request.body.brand,
       oldprice: request.body.oldprice,
       rating: request.body.rating,
@@ -757,6 +789,27 @@ export async function deleteProductimage(request, response) {
     });
   }
 }
+export async function deletebannerimage(request, response) {
+  try {
+    const fileId = request.query.fileId;
+
+    if (!fileId) {
+      return response.status(400).json({ message: "fileId is required" });
+    }
+
+    const result = await imagekit.deleteFile(fileId);
+
+    return response.status(200).json({
+      message: "Image deleted successfully",
+      result,
+    });
+  } catch (error) {
+    console.error("ImageKit delete error:", error);
+    return response.status(500).json({
+      message: error.message || "Failed to delete image",
+    });
+  }
+}
 
 export async function UpdateProduct(request, response) {
   try {
@@ -767,6 +820,9 @@ export async function UpdateProduct(request, response) {
         description: request.body.description,
         price: request.body.price,
         images: request.body.images,
+        bannerImage: request.body.bannerImage,
+        bannerTitle: request.body.bannerTitle,
+        IsDisplayedHome: request.body.IsDisplayedHome,
         brand: request.body.brand,
         oldprice: request.body.oldprice,
         rating: request.body.rating,
@@ -1160,6 +1216,103 @@ export async function deleteProductweight(request, response) {
       error: false,
       message: "Product weight Deleted Successfully",
       success: true,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
+}
+
+export async function filterProducts(request, response) {
+  try {
+    const {
+      catId,
+      subcatId,
+      thirdsubcatId,
+      minPrice,
+      maxPrice,
+      rating,
+      limit,
+      page,
+    } = request.body;
+
+    const filters = {};
+
+    if (catId && catId.length > 0) filters.category = { $in: catId };
+    if (subcatId && subcatId.length > 0) filters.subcatId = { $in: subcatId };
+    if (thirdsubcatId && thirdsubcatId.length > 0)
+      filters.thirdsubcatId = { $in: thirdsubcatId };
+
+    if (minPrice || maxPrice) {
+      filters.price = {};
+      if (minPrice) filters.price.$gte = minPrice;
+      if (maxPrice) filters.price.$lte = maxPrice;
+    }
+
+    if (rating && rating.length > 0) filters.rating = { $in: rating };
+
+    const limitNum = parseInt(limit) || 10;
+    const pageNum = parseInt(page) || 1;
+
+    console.log("Filters:", filters);
+
+    const products = await ProductModel.find(filters)
+      .limit(limitNum)
+      .skip((pageNum - 1) * limitNum)
+      .populate("category");
+
+    const totalPosts = await ProductModel.countDocuments(filters);
+
+    return response.status(200).json({
+      error: false,
+      data: products,
+      totalPosts,
+      totalPages: Math.ceil(totalPosts / limitNum),
+      page: pageNum,
+      success: true,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
+}
+const sortItems = (items, sortBy, order) => {
+  return items.sort((a, b) => {
+    if (sortBy === "price") {
+      return order === "asc" ? a.price - b.price : b.price - a.price;
+    }
+
+    if (sortBy === "name") {
+      return order === "asc"
+        ? a.name.localeCompare(b.name)
+        : b.name.localeCompare(a.name);
+    }
+    return 0;
+  });
+};
+
+export async function SortProducts(request, response) {
+  try {
+    const { sortBy, order, products } = request.body;
+
+    if (!Array.isArray(products)) {
+      throw new Error("Invalid input: products must be an array.");
+    }
+
+    const Sorted = sortItems([...products], sortBy, order);
+
+    return response.status(200).json({
+      error: false,
+      data: Sorted,
+      success: true,
+      page: 0,
+      totalPages: 0,
     });
   } catch (error) {
     return response.status(500).json({

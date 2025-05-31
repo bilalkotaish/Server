@@ -98,6 +98,18 @@ const productSchema = new mongoose.Schema(
         default: null,
       },
     ],
+    bannerImage: {
+      type: [String],
+      default: [],
+    },
+    bannerTitle: {
+      type: String,
+      default: null,
+    },
+    IsDisplayedHome: {
+      type: Boolean,
+      default: false,
+    },
     createdAt: {
       type: Date,
       default: Date.now,

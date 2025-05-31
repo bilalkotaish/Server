@@ -11,6 +11,7 @@ import { error } from "console";
 import ImageKit from "imagekit";
 
 import path from "path";
+import ReviewsModel from "../models/reviews.model.js";
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -91,6 +92,76 @@ export async function registerUserController(request, response) {
   }
 }
 
+export async function authWithGoogleController(request, response) {
+  try {
+    const { name, email, Avatar, password, Mobile, Role } = request.body;
+    const existinguser = await UserModel.findOne({ email: email });
+    if (!existinguser) {
+      const user = await UserModel.create({
+        name: name,
+        email: email,
+        password: "null",
+        Avatar: Avatar,
+        Mobile: Mobile,
+        Role: Role,
+        Verify_email: true,
+        SignUpGoogle: true,
+      });
+      const accesstoken = await generateAccessToken(user._id);
+      const refreshToken = await generateRefreshToken(user._id);
+
+      await UserModel.findByIdAndUpdate(user._id, {
+        Last_Login: new Date(),
+      });
+
+      const cookiesoptions = {
+        httpOnly: true,
+        secure: true,
+        sameSite: "None",
+      };
+
+      response.cookie("refreshToken", refreshToken, cookiesoptions);
+      response.cookie("accessToken", accesstoken, cookiesoptions);
+
+      return response.status(200).json({
+        success: true,
+        error: false,
+        message: "Login Success",
+        data: {
+          accesstoken,
+          refreshToken,
+          userId: user._id,
+        },
+      });
+    } else {
+      const accesstoken = await generateAccessToken(existinguser._id);
+      const refreshToken = await generateRefreshToken(existinguser._id);
+      const cookiesoptions = {
+        httpOnly: true,
+        secure: true,
+        sameSite: "None",
+      };
+      response.cookie("refreshToken", refreshToken, cookiesoptions);
+      response.cookie("accessToken", accesstoken, cookiesoptions);
+      return response.status(200).json({
+        success: true,
+        error: false,
+        message: "Login Success",
+        data: {
+          accesstoken,
+          refreshToken,
+          userId: existinguser._id,
+        },
+      });
+    }
+  } catch (error) {
+    return response.status(500).json({
+      message: error.message || error,
+      error: true,
+      success: false,
+    });
+  }
+}
 export async function verifyEmailController(request, response) {
   try {
     const { email, otp } = request.body;
@@ -302,9 +373,9 @@ export async function UploadImageController(req, res) {
     }
 
     // Optional: delete previous avatar (only if stored by fileId and you kept it)
-    // if (user.avatarFileId) {
-    //   await imagekit.deleteFile(user.avatarFileId);
-    // }
+    if (user.AvatarFileId) {
+      await imagekit.deleteFile(user.AvatarFileId);
+    }
 
     const uploadResponses = [];
 
@@ -341,19 +412,28 @@ export async function UploadImageController(req, res) {
 export async function deleteImageController(request, response) {
   try {
     const imgUrl = request.query.img;
-    const urlArr = imgUrl.split("/");
-    const image = urlArr[urlArr.length - 1];
-    const imgName = image.split(".")[0];
+    const urlParts = imgUrl.split("/");
+    const imgFileName = urlParts[urlParts.length - 1]; // e.g. abc123.jpg
 
-    if (imgName) {
-      const result = await cloudinary.uploader.destroy(
-        imgName,
-        (error, result) => {}
-      );
+    const fileId = await imagekit.listFiles({
+      name: imgFileName,
+    });
 
-      if (result) {
-        return response.status(200).send(result);
-      }
+    if (fileId.length > 0) {
+      const result = await imagekit.deleteFile(fileId[0].fileId);
+
+      return response.status(200).json({
+        success: true,
+        error: false,
+        message: "Image deleted successfully",
+        data: result,
+      });
+    } else {
+      return response.status(404).json({
+        success: false,
+        error: true,
+        message: "Image not found in ImageKit",
+      });
     }
   } catch (error) {
     return response.status(500).json({
@@ -524,18 +604,20 @@ export async function resetPassword(request, response) {
       });
     }
 
-    // If oldPassword is provided, validate it
-    if (oldPassword) {
-      const isPasswordValid = await bcryptjs.compare(
-        oldPassword,
-        user.password
-      );
-      if (!isPasswordValid) {
-        return response.status(400).json({
-          success: false,
-          error: true,
-          message: "Your Old Password is incorrect",
-        });
+    if (user?.SignUpGoogle === false) {
+      // If oldPassword is provided, validate it
+      if (oldPassword) {
+        const isPasswordValid = await bcryptjs.compare(
+          oldPassword,
+          user.password
+        );
+        if (!isPasswordValid) {
+          return response.status(400).json({
+            success: false,
+            error: true,
+            message: "Your Old Password is incorrect",
+          });
+        }
       }
     }
 
@@ -623,6 +705,80 @@ export async function UserDetails(request, response) {
   } catch (error) {
     return response.status(500).json({
       message: error.message || error,
+    });
+  }
+}
+
+export async function AddUserReviews(request, response) {
+  try {
+    const { image, userName, review, rating, userId, productId } = request.body;
+    const Review = new ReviewsModel({
+      image: image,
+      userName: userName,
+      review: review,
+      rating: rating,
+      userId: userId,
+      productId: productId,
+    });
+    await Review.save();
+    return response.status(200).json({
+      success: true,
+      message: "Review added successfully",
+      data: Review,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      message: error.message || error,
+      success: false,
+      error: true,
+    });
+  }
+}
+
+export async function getallUserReviews(request, response) {
+  try {
+    const reviews = await ReviewsModel.find()
+      .populate("productId")
+      .select("-productId");
+    return response.status(200).json({
+      success: true,
+      message: "Reviews fetched successfully",
+      data: reviews,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      message: error.message || error,
+      success: false,
+      error: true,
+    });
+  }
+}
+
+export async function getUserReviews(request, response) {
+  try {
+    const { productId } = request.query; // ✅ fix: get from query
+
+    const reviews = await ReviewsModel.find({ productId })
+      .populate("productId")
+      .select("-productId");
+
+    if (!reviews || reviews.length === 0) {
+      return response.status(404).json({
+        success: false,
+        message: "No reviews found for this product.",
+      });
+    }
+
+    return response.status(200).json({
+      success: true,
+      message: "Reviews fetched successfully",
+      data: reviews,
+    });
+  } catch (error) {
+    return response.status(500).json({
+      message: error.message || error,
+      success: false,
+      error: true,
     });
   }
 }

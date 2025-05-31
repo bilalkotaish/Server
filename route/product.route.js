@@ -6,12 +6,14 @@ import {
   createProductRam,
   createProductSize,
   createProductWeight,
+  deletebannerimage,
   deleteMultipleProduct,
   deleteProduct,
   deleteProductimage,
   deleteProductram,
   deleteProductsize,
   deleteProductweight,
+  filterProducts,
   getAllProducts,
   getFeaturedProduct,
   getProduct,
@@ -30,10 +32,12 @@ import {
   getProductSizeById,
   getProductWeight,
   getProductweightById,
+  SortProducts,
   UpdateProduct,
   UpdateProductRam,
   UpdateProductSize,
   UpdateProductWeight,
+  uploadBannerImage,
   uploadProductImage,
 } from "../controllers/product.controller.js";
 
@@ -45,11 +49,18 @@ ProductRouter.post(
   upload.array("images"),
   uploadProductImage
 );
-
+ProductRouter.post(
+  "/uploadbannerimage",
+  auth,
+  upload.array("images"),
+  uploadBannerImage
+);
 ProductRouter.post("/create", auth, createProduct);
 ProductRouter.post("/AddRam", auth, createProductRam);
 ProductRouter.post("/addSize", auth, createProductSize);
 ProductRouter.post("/AddWeight", auth, createProductWeight);
+ProductRouter.post("/filters", filterProducts);
+ProductRouter.post("/Sort", SortProducts);
 
 ProductRouter.get("/products", getAllProducts);
 ProductRouter.get("/getRams", getProductRam);
@@ -58,6 +69,9 @@ ProductRouter.get("/getWeights", getProductWeight);
 ProductRouter.get("/getRams/:id", getProductramById);
 ProductRouter.get("/getSizes/:id", getProductSizeById);
 ProductRouter.get("/getWeights/:id", getProductweightById);
+ProductRouter.delete("/deleteimage", auth, deleteProductimage);
+ProductRouter.delete("/deletebannerimage", auth, deletebannerimage);
+
 ProductRouter.delete("/deleteSize/:id", deleteProductsize);
 ProductRouter.delete("/deleteWeight/:id", deleteProductweight);
 ProductRouter.delete("/deleteRam/:id", deleteProductram);
@@ -74,7 +88,6 @@ ProductRouter.get("/productsCount", getProductCount);
 ProductRouter.get("/isFeatured", getFeaturedProduct);
 ProductRouter.delete("/:id", deleteProduct);
 ProductRouter.get("/:id", getProduct);
-ProductRouter.delete("/deleteimage", auth, deleteProductimage);
 ProductRouter.delete("/deleteMultiple", deleteMultipleProduct);
 ProductRouter.put("/updateProduct/:id", auth, UpdateProduct);
 ProductRouter.put("/updateRams/:id", auth, UpdateProductRam);
